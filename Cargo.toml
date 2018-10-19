@@ -1,0 +1,16 @@
+[package]
+name = "font_parse"
+version = "0.1.0"
+authors = ["Manuel Reinhardt <manuel.rhdt@gmail.com>"]
+
+[dependencies]
+nom = { version = "^4", features = ["verbose-errors"] }
+failure = "^0.1"
+serde_derive = "^1"
+serde = "^1"
+log = { version = "0.4", features = ["release_max_level_warn"] }
+derive_more = "^0.12"
+
+[dev_dependencies]
+simple_logger = "^1"
+svg = "^0.5"
