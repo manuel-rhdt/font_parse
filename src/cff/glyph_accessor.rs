@@ -13,8 +13,9 @@
 //    limitations under the License.
 
 use error::ParserError;
-use tables::cff;
+use cff;
 use OpentypeTableAccess;
+use tables::cff::Cff as CffTable;
 
 use nom::{be_i16, be_i32, Err, IResult};
 
@@ -102,7 +103,7 @@ impl<'font> Glyph<'font> {
 
 #[derive(Debug, Clone)]
 pub struct GlyphAccessor<'font> {
-    cff: cff::Cff<'font>,
+    cff: CffTable<'font>,
     parser_stack: VecDeque<Fixed16_16>,
 }
 
@@ -402,7 +403,7 @@ impl<'a> CffCharstringParser<'a> {
                     .checked_add(Self::cff_subroutine_bias(self.local_subr?))?;
                 let subr_code = self.local_subr?.get(code_index as usize)?;
                 trace!("subroutine {}:", code_index);
-                self.evaluate_subroutine(subr_code); 
+                self.evaluate_subroutine(subr_code);
                 None
             }
             // return

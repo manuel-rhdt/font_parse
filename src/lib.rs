@@ -31,19 +31,19 @@ use nom::{be_u16, be_u32, be_u8};
 use std::borrow::Cow;
 
 mod error;
-pub(crate) mod ttf_glyph_accessor;
-pub(crate) mod cff_glyph_accessor;
+mod cff;
 mod glyph_accessor;
 pub mod tables;
+pub(crate) mod ttf_glyph_accessor;
 
-use error::{ParserError, ErrorKind};
+use error::{ErrorKind, ParserError};
 
-pub use cff_glyph_accessor::{Glyph as CffGlyph, PathInstruction};
-pub use ttf_glyph_accessor::{Glyph as TtfGlyph, QuadraticPath};
-pub use glyph_accessor::{GlyphAccessor, Glyph};
+use cff::GlyphAccessor as CffGlyphAccessor;
+pub use cff::{Glyph as CffGlyph, PathInstruction};
 use glyph_accessor::_GlyphAccessor;
-use cff_glyph_accessor::{GlyphAccessor as CffGlyphAccessor};
-use ttf_glyph_accessor::{GlyphAccessor as TtfGlyphAccessor};
+pub use glyph_accessor::{Glyph, GlyphAccessor};
+use ttf_glyph_accessor::GlyphAccessor as TtfGlyphAccessor;
+pub use ttf_glyph_accessor::{Glyph as TtfGlyph, QuadraticPath};
 
 pub type GlyphIndex = u16;
 
@@ -161,14 +161,16 @@ pub trait OpentypeTableAccess: Sized {
     where
         Tbl: tables::SfntTable<'b, Context = ()>,
     {
-        let (_, tag) = parse_tag(Tbl::TAG.as_bytes())
-            .expect("Invalid table tag.");
-        let table_data = self.table_data(tag).ok_or_else(|| ParserError::expected_table(tag))?;
-        Tbl::from_data(table_data, ()).map_err(|err| error::ParserError::from_table_parse_err(tag, err))
+        let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
+        let table_data = self
+            .table_data(tag)
+            .ok_or_else(|| ParserError::expected_table(tag))?;
+        Tbl::from_data(table_data, ())
+            .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
     }
 
     /// Tries to parse a font table into the requested type.
-    /// 
+    ///
     /// Panics
     /// ------
     /// The default implementation only panics if the implementation of `Tbl`
@@ -177,10 +179,12 @@ pub trait OpentypeTableAccess: Sized {
     where
         Tbl: tables::SfntTable<'b, Context = C>,
     {
-        let (_, tag) = parse_tag(Tbl::TAG.as_bytes())
-            .expect("Invalid table tag.");
-        let table_data = self.table_data(tag).ok_or_else(|| ParserError::expected_table(tag))?;
-        Tbl::from_data(table_data, context).map_err(|err| error::ParserError::from_table_parse_err(tag, err))
+        let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
+        let table_data = self
+            .table_data(tag)
+            .ok_or_else(|| ParserError::expected_table(tag))?;
+        Tbl::from_data(table_data, context)
+            .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
     }
 
     // TODO: Needs Testing
@@ -200,12 +204,10 @@ pub trait OpentypeTableAccess: Sized {
     /// Returns a `GlyphAccessor` providing access to individual glyphs of the font.
     fn glyphs(&self) -> Result<GlyphAccessor<'_>, ParserError> {
         match CffGlyphAccessor::new(self) {
-            Err(err) => {
-                match err.kind() {
-                    ErrorKind::TableMissing(_) => {},
-                    _ => Err(err)?
-                }
-            }
+            Err(err) => match err.kind() {
+                ErrorKind::TableMissing(_) => {}
+                _ => Err(err)?,
+            },
             Ok(accessor) => return Ok(_GlyphAccessor::Cff(accessor).into()),
         }
 
@@ -236,7 +238,11 @@ impl<'a> Font<'a> {
         let record = match font_header {
             FontFile::Single(record) => record,
             FontFile::Collection(c) => {
-                let record = c.fonts.get(index as usize).ok_or_else(|| ParserError::font_not_found(index as usize))?.clone();
+                let record = c
+                    .fonts
+                    .get(index as usize)
+                    .ok_or_else(|| ParserError::font_not_found(index as usize))?
+                    .clone();
                 collection = Some(c);
                 record
             }
