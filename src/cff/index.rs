@@ -17,27 +17,26 @@ use error::ParserError;
 use nom::{be_u8, be_u16, be_u24, be_u32};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Index<'a> {
+pub struct Index {
+    /// The offsets into the data that index the elements
     pub offsets: Vec<usize>,
-    data: &'a [u8],
 }
 
-impl<'a> Index<'a> {
-    pub fn empty() -> Index<'static> {
+impl Index {
+    pub fn empty() -> Index {
         Index {
             offsets: vec![],
-            data: &[],
         }
     }
 
-    pub fn parse_from(bytes: &'a [u8]) -> Result<Self, ParserError> {
+    pub fn parse_from(bytes: &[u8]) -> Result<Self, ParserError> {
         parse_index(bytes).map(|(_, index)| index).map_err(ParserError::from)
     }
 
-    pub fn get(&self, index: usize) -> Option<&'a [u8]> {
+    pub fn get<'data>(&self, index: usize, data: &'data [u8]) -> Option<&'data [u8]> {
         let start = self.offsets.get(index)?.saturating_sub(1);
         let end = self.offsets.get(index + 1)?.saturating_sub(1);
-        self.data.get(start..end)
+        data.get(start..end)
     }
 
     pub fn len(&self) -> usize {
@@ -73,8 +72,8 @@ named!(pub(crate) parse_index<&[u8], Index>,
     do_parse!(
         num_offsets: map!(be_u16, |x| x as usize) >>
         offsets: apply!(parse_offset_list, num_offsets) >>
-        data: take!(offsets.last().map(|&offset| offset.saturating_sub(1)).unwrap_or(0)) >>
-        (Index { offsets, data })
+        take!(offsets.last().map(|&offset| offset.saturating_sub(1)).unwrap_or(0)) >>
+        (Index { offsets })
     )
 );
 
@@ -103,7 +102,6 @@ mod test {
         assert_eq!(
             Index {
                 offsets: vec![],
-                data: &[]
             },
             parse_index(&data).unwrap().1
         );
@@ -112,7 +110,6 @@ mod test {
         assert_eq!(
             Index {
                 offsets: vec![0x01, 0x03],
-                data: &[0x0a, 0x0b]
             },
             parse_index(&data).unwrap().1
         );

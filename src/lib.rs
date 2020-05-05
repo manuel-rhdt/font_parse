@@ -161,12 +161,7 @@ pub trait OpentypeTableAccess: Sized {
     where
         Tbl: tables::SfntTable<'b, Context = ()>,
     {
-        let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
-        let table_data = self
-            .table_data(tag)
-            .ok_or_else(|| ParserError::expected_table(tag))?;
-        Tbl::from_data(table_data, ())
-            .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
+        self.parse_table_context(())
     }
 
     /// Tries to parse a font table into the requested type.
@@ -232,7 +227,6 @@ impl<'a> Font<'a> {
     /// Create a `Font` from a slice of bytes and an index for selecting a font
     /// from an OpenType font collection.
     pub fn from_bytes(bytes: &'a [u8], index: u32) -> Result<Self, ParserError> {
-        // TODO: remove .unwrap()
         let (_, font_header) = parse_slice(bytes)?;
         let mut collection = None;
         let record = match font_header {

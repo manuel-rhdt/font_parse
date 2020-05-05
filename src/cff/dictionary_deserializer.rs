@@ -113,12 +113,12 @@ enum DictionaryParserState<'de> {
 #[derive(Debug)]
 pub(crate) struct DictionaryDeserializer<'a, 'de: 'a> {
     data: &'de [u8],
-    string_index: &'a cff::Index<'de>,
+    string_index: &'a cff::Index,
     state: DictionaryParserState<'de>,
 }
 
 impl<'a, 'de> DictionaryDeserializer<'a, 'de> {
-    pub(crate) fn new(data: &'de [u8], string_index: &'a cff::Index<'de>) -> Self {
+    pub(crate) fn new(data: &'de [u8], string_index: &'a cff::Index) -> Self {
         DictionaryDeserializer {
             data,
             string_index,
@@ -130,7 +130,7 @@ impl<'a, 'de> DictionaryDeserializer<'a, 'de> {
         if index <= 390 {
             Cow::Borrowed(super::STANDARD_STRINGS[index])
         } else {
-            let bytes = self.string_index.get(index - 391).unwrap_or_default();
+            let bytes = self.string_index.get(index - 391, self.data).unwrap_or_default();
             String::from_utf8_lossy(bytes)
         }
     }
