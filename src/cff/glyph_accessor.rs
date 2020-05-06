@@ -12,10 +12,10 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use crate::error::ParserError;
 use crate::cff;
-use crate::OpentypeTableAccess;
+use crate::error::ParserError;
 use crate::tables::cff::Cff as CffTable;
+use crate::{OpentypeTableAccess, ParseTable};
 
 use nom::{be_i16, be_i32, Err, IResult};
 

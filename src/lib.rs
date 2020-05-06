@@ -29,6 +29,7 @@ use nom::IResult;
 use nom::{be_u16, be_u32, be_u8};
 
 use std::borrow::Cow;
+use std::io::Write;
 
 mod cff;
 mod error;
@@ -112,6 +113,20 @@ pub struct FontRecord {
     pub tables: Vec<TableRecord>,
 }
 
+impl FontRecord {
+    pub fn write_to<W: Write>(&self, mut sink: W) -> std::io::Result<()> {
+        sink.write(&self.version.to_be_bytes())?;
+        sink.write(&(self.tables.len() as u16).to_be_bytes())?;
+        sink.write(&self.search_range.to_be_bytes())?;
+        sink.write(&self.entry_selector.to_be_bytes())?;
+        sink.write(&self.range_shift.to_be_bytes())?;
+        for table in &self.tables {
+            table.write_to(&mut sink)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum OutlineType {
     TrueType,
@@ -140,6 +155,40 @@ pub trait OpentypeTableAccess {
         self.table_data(tag).is_some()
     }
 
+    // TODO: Needs Testing
+    fn outline_type(&self) -> OutlineType {
+        if self.has_table(Tag::new('S', 'V', 'G', ' ')) {
+            OutlineType::Svg
+        } else if self.has_table(Tag::new('C', 'F', 'F', ' ')) {
+            OutlineType::Cff
+        } else if self.has_table(Tag::new('C', 'F', 'F', '2')) {
+            OutlineType::Cff2
+        } else {
+            OutlineType::TrueType
+        }
+    }
+
+    /// Returns a `GlyphAccessor` providing access to individual glyphs of the font.
+    fn glyphs(&self) -> Result<GlyphAccessor<'_>, ParserError>
+    where
+        Self: Sized,
+    {
+        match CffGlyphAccessor::new(self) {
+            Err(err) => match err.kind() {
+                ErrorKind::TableMissing(_) => {}
+                _ => Err(err)?,
+            },
+            Ok(accessor) => return Ok(_GlyphAccessor::Cff(accessor).into()),
+        }
+
+        match TtfGlyphAccessor::new(self) {
+            Err(err) => Err(err)?,
+            Ok(accessor) => return Ok(_GlyphAccessor::Ttf(accessor).into()),
+        }
+    }
+}
+
+pub trait ParseTable {
     /// Tries to parse a font table into the requested type.
     ///
     /// Examples
@@ -173,6 +222,12 @@ pub trait OpentypeTableAccess {
     /// contains an invalid Tag.
     fn parse_table_context<'b, Tbl, C>(&'b self, context: C) -> Result<Tbl, error::ParserError>
     where
+        Tbl: tables::SfntTable<'b, Context = C>;
+}
+
+impl<T: OpentypeTableAccess> ParseTable for T {
+    fn parse_table_context<'b, Tbl, C>(&'b self, context: C) -> Result<Tbl, error::ParserError>
+    where
         Tbl: tables::SfntTable<'b, Context = C>,
     {
         let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
@@ -181,38 +236,6 @@ pub trait OpentypeTableAccess {
             .ok_or_else(|| ParserError::expected_table(tag))?;
         Tbl::from_data(table_data, context)
             .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
-    }
-
-    // TODO: Needs Testing
-    fn outline_type(&self) -> OutlineType {
-        if self.has_table(Tag::new('S', 'V', 'G', ' ')) {
-            OutlineType::Svg
-        } else if self.has_table(Tag::new('C', 'F', 'F', ' ')) {
-            OutlineType::Cff
-        } else if self.has_table(Tag::new('C', 'F', 'F', '2')) {
-            OutlineType::Cff2
-        } else {
-            OutlineType::TrueType
-        }
-    }
-
-    /// Returns a `GlyphAccessor` providing access to individual glyphs of the font.
-    fn glyphs(&self) -> Result<GlyphAccessor<'_>, ParserError>
-    where
-        Self: Sized,
-    {
-        match CffGlyphAccessor::new(self) {
-            Err(err) => match err.kind() {
-                ErrorKind::TableMissing(_) => {}
-                _ => Err(err)?,
-            },
-            Ok(accessor) => return Ok(_GlyphAccessor::Cff(accessor).into()),
-        }
-
-        match TtfGlyphAccessor::new(self) {
-            Err(err) => Err(err)?,
-            Ok(accessor) => return Ok(_GlyphAccessor::Ttf(accessor).into()),
-        }
     }
 }
 
@@ -250,6 +273,42 @@ impl<'a> Font<'a> {
             data: Cow::Borrowed(bytes),
         })
     }
+
+    // pub fn from_tables(tables: &[Tag], record: FontRecord, provider: &dyn OpentypeTableAccess) -> Self {
+    //     let num_tables = tables
+    //         .iter()
+    //         .filter(|&&tag| provider.has_table(tag))
+    //         .count();
+
+    //     let mut new_record = FontRecord {
+    //         tables: vec![],
+    //         ..record
+    //     };
+
+    //     todo!()
+    // }
+
+    pub fn write_to<W: Write>(&self, mut sink: W) -> std::io::Result<()> {
+        let mut offset = 12 + self.record.tables.len() as u32 * 16;
+        let mut record = self.record.clone();
+        for table in &mut record.tables {
+            table.offset = offset;
+            offset += table.length;
+            // alignment
+            offset += (8 - offset % 8) % 8;
+        }
+
+        record.write_to(&mut sink)?;
+
+        for table in &record.tables {
+            sink.write_all(self.table_data(table.tag).unwrap())?;
+            // write padding bytes after every table
+            let num_zero_bytes = ((8 - table.length % 8) % 8) as usize;
+            sink.write_all(&[0u8, 0, 0, 0, 0, 0, 0, 0][..num_zero_bytes])?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> OpentypeTableAccess for Font<'a> {
@@ -272,6 +331,16 @@ pub struct TableRecord {
     pub check_sum: u32,
     pub offset: u32,
     pub length: u32,
+}
+
+impl TableRecord {
+    pub fn write_to<W: Write>(&self, mut sink: W) -> std::io::Result<()> {
+        sink.write(&self.tag.0)?;
+        sink.write(&self.check_sum.to_be_bytes())?;
+        sink.write(&self.offset.to_be_bytes())?;
+        sink.write(&self.length.to_be_bytes())?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]

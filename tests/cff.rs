@@ -16,7 +16,7 @@ extern crate font_parse;
 extern crate simple_logger;
 
 use font_parse::tables::cff;
-use font_parse::{Font, Glyph, OpentypeTableAccess, Tag};
+use font_parse::{Font, Glyph, OpentypeTableAccess, ParseTable, Tag};
 
 fn get_cff_font() -> Font<'static> {
     let data = include_bytes!("font_files/LinBiolinum_R.otf");

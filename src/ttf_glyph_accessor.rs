@@ -19,7 +19,7 @@ use crate::tables::glyf::{
 };
 use crate::tables::head::Head;
 use crate::tables::loca::Loca;
-use crate::OpentypeTableAccess;
+use crate::{OpentypeTableAccess, ParseTable};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum QuadraticPath {
