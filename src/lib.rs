@@ -104,7 +104,7 @@ impl Display for Tag {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontRecord {
     pub version: u32,
     pub search_range: u16,
@@ -155,7 +155,6 @@ pub trait OpentypeTableAccess {
         self.table_data(tag).is_some()
     }
 
-    // TODO: Needs Testing
     fn outline_type(&self) -> OutlineType {
         if self.has_table(Tag::new('S', 'V', 'G', ' ')) {
             OutlineType::Svg
@@ -289,17 +288,18 @@ impl<'a> Font<'a> {
     // }
 
     pub fn write_to<W: Write>(&self, mut sink: W) -> std::io::Result<()> {
-        let mut offset = 12 + self.record.tables.len() as u32 * 16;
+        let mut offset = 16 + self.record.tables.len() as u32 * 16;
         let mut record = self.record.clone();
         for table in &mut record.tables {
             table.offset = offset;
             offset += table.length;
             // alignment
-            offset += (8 - offset % 8) % 8;
+            offset += (8 - table.length % 8) % 8;
         }
-
         record.write_to(&mut sink)?;
-
+        // padding
+        sink.write_all(&[0, 0, 0, 0])?;
+ 
         for table in &record.tables {
             sink.write_all(self.table_data(table.tag).unwrap())?;
             // write padding bytes after every table
@@ -472,5 +472,25 @@ mod tests {
         let data = include_bytes!("../tests/font_files/LinBiolinum_R.otf");
         let font = Font::from_bytes(data, 0).expect("Could not read font.");
         assert_eq!(font.outline_type(), OutlineType::Cff);
+    }
+
+    #[test]
+    fn write_font() {
+        let data = include_bytes!("../tests/font_files/Inconsolata-Regular.ttf");
+        let font = Font::from_bytes(data, 0).expect("Could not read font.");
+
+        let mut data2 = vec![];
+        font.write_to(&mut data2).unwrap();
+
+        let font2 = Font::from_bytes(&data2, 0).unwrap();
+
+        assert_eq!(
+            font.table_data(Tag::new('G', 'D', 'E', 'F')),
+            font2.table_data(Tag::new('G', 'D', 'E', 'F'))
+        );
+        assert_eq!(
+            font.table_data(Tag::new('g', 'l', 'y', 'f')),
+            font2.table_data(Tag::new('g', 'l', 'y', 'f'))
+        );
     }
 }
