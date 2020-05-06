@@ -36,14 +36,14 @@ mod glyph_accessor;
 pub mod tables;
 pub(crate) mod ttf_glyph_accessor;
 
-use error::{ErrorKind, ParserError};
+use crate::error::{ErrorKind, ParserError};
 
-use cff::GlyphAccessor as CffGlyphAccessor;
-pub use cff::{Glyph as CffGlyph, PathInstruction};
-use glyph_accessor::_GlyphAccessor;
-pub use glyph_accessor::{Glyph, GlyphAccessor};
-use ttf_glyph_accessor::GlyphAccessor as TtfGlyphAccessor;
-pub use ttf_glyph_accessor::{Glyph as TtfGlyph, QuadraticPath};
+use crate::cff::GlyphAccessor as CffGlyphAccessor;
+pub use crate::cff::{Glyph as CffGlyph, PathInstruction};
+use crate::glyph_accessor::_GlyphAccessor;
+pub use crate::glyph_accessor::{Glyph, GlyphAccessor};
+use crate::ttf_glyph_accessor::GlyphAccessor as TtfGlyphAccessor;
+pub use crate::ttf_glyph_accessor::{Glyph as TtfGlyph, QuadraticPath};
 
 pub type GlyphIndex = u16;
 

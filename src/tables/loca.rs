@@ -16,7 +16,7 @@ use super::SfntTable;
 
 use std::ops::RangeFrom;
 
-use error::ParserError;
+use crate::error::ParserError;
 use nom::types::CompleteByteSlice;
 use nom::{need_more, AsBytes, AtEof, IResult, InputLength, Needed, Slice};
 

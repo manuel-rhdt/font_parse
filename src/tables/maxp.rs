@@ -15,7 +15,7 @@
 use nom::{be_u16, be_u32};
 
 use super::SfntTable;
-use error::ParserError;
+use crate::error::ParserError;
 
 #[derive(Debug)]
 pub struct Maxp<'a> {

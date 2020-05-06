@@ -12,10 +12,10 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use error::ParserError;
-use cff;
-use OpentypeTableAccess;
-use tables::cff::Cff as CffTable;
+use crate::error::ParserError;
+use crate::cff;
+use crate::OpentypeTableAccess;
+use crate::tables::cff::Cff as CffTable;
 
 use nom::{be_i16, be_i32, Err, IResult};
 
@@ -555,17 +555,17 @@ impl<'a> CffCharstringParser<'a> {
                 self.repeat();
                 Some(self.curve_to())
             }
-            x @ 32...246 => {
+            x @ 32..=246 => {
                 self.stack.push_back((x as i16 - 139).into());
                 None
             }
-            x @ 247...250 => {
+            x @ 247..=250 => {
                 let w = self.next_byte()?;
                 self.stack
                     .push_back(((x as i16 - 247) * 256 + w as i16 + 108).into());
                 None
             }
-            x @ 251...254 => {
+            x @ 251..=254 => {
                 let w = self.next_byte()?;
                 self.stack
                     .push_back((-(x as i16 - 251) * 256 - w as i16 - 108).into());

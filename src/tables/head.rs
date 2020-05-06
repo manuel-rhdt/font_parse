@@ -16,7 +16,7 @@ use nom::{be_i16, be_i64, be_u16, be_u32};
 
 use super::loca::LocFormat;
 use super::SfntTable;
-use error::ParserError;
+use crate::error::ParserError;
 
 #[derive(Debug)]
 pub struct Head {

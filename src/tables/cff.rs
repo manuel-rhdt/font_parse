@@ -16,9 +16,9 @@ use nom::be_u8;
 use serde::Deserialize;
 
 use super::SfntTable;
-use cff;
-use cff::parse_index;
-use error::ParserError;
+use crate::cff;
+use crate::cff::parse_index;
+use crate::error::ParserError;
 
 #[derive(Debug, Clone)]
 pub struct Cff<'font> {

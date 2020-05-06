@@ -20,7 +20,7 @@ use std::convert::From;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-use Tag;
+use crate::Tag;
 
 #[derive(Debug, Display)]
 pub struct ParserError {
@@ -115,7 +115,7 @@ impl From<DeserializerError> for ParserError {
 }
 
 impl Error for ParserError {
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self.kind {
             ErrorKind::TableParse(_, Some(ref cause)) => Some(cause),
             ErrorKind::CffDictionaryDeserialize(ref err) => Some(err),

@@ -16,8 +16,8 @@
 
 use nom::{self, be_i16, be_u16, rest};
 
-use error::ParserError;
-use tables::SfntTable;
+use crate::error::ParserError;
+use crate::tables::SfntTable;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Glyf<'a> {

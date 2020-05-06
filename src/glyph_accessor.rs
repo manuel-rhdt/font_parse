@@ -12,10 +12,10 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use cff::{Glyph as CffGlyph, GlyphAccessor as CffGlyphAccessor};
-use ttf_glyph_accessor::{Glyph as TtfGlyph, GlyphAccessor as TtfGlyphAccessor};
+use crate::cff::{Glyph as CffGlyph, GlyphAccessor as CffGlyphAccessor};
+use crate::ttf_glyph_accessor::{Glyph as TtfGlyph, GlyphAccessor as TtfGlyphAccessor};
 
-use error::ParserError;
+use crate::error::ParserError;
 
 #[derive(Debug)]
 pub enum Glyph<'font> {

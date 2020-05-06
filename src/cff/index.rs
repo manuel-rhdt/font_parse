@@ -12,7 +12,7 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use error::ParserError;
+use crate::error::ParserError;
 
 use nom::{be_u16, be_u24, be_u32, be_u8};
 

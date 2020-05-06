@@ -12,8 +12,8 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use cff;
-use error::DeserializerError;
+use crate::cff;
+use crate::error::DeserializerError;
 
 use nom::*;
 use serde::de;
@@ -65,7 +65,7 @@ enum Value {
 named!(parse_operator<&[u8], Operator>,
     switch!(be_u8,
         12 => map!(be_u8, |x| Operator::Long(x)) |
-        x @ 0...21 => value!(Operator::Short(x))
+        x @ 0..=21 => value!(Operator::Short(x))
     )
 );
 
@@ -75,9 +75,9 @@ named!(parse_operand<&[u8], Value>,
         28 => map!(be_i16, |x| Value::Integer(x as i32)) |
         29 => map!(be_i32, |x| Value::Integer(x as i32)) |
         30 => map!(parse_float, |x| Value::Float(x)) |
-        x @ 32...246 => value!(Value::Integer(x as i32 - 139)) |
-        x @ 247...250 => map!(be_u8, |y| Value::Integer((x as i32 - 247) * 256 + y as i32 + 108)) |
-        x @ 251...254 => map!(be_u8, |y| Value::Integer(-(x as i32 - 251) * 256 - y as i32 - 108))
+        x @ 32..=246 => value!(Value::Integer(x as i32 - 139)) |
+        x @ 247..=250 => map!(be_u8, |y| Value::Integer((x as i32 - 247) * 256 + y as i32 + 108)) |
+        x @ 251..=254 => map!(be_u8, |y| Value::Integer(-(x as i32 - 251) * 256 - y as i32 - 108))
     )
 );
 

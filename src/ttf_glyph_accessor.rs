@@ -12,14 +12,14 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use error::ParserError;
-use tables::glyf::{
+use crate::error::ParserError;
+use crate::tables::glyf::{
     self, parse_composite_glyph, parse_header, parse_simple_glyph, CompositeGlyph, Glyf,
     GlyphPoint, GlyphPointIter, SimpleGlyph,
 };
-use tables::head::Head;
-use tables::loca::Loca;
-use OpentypeTableAccess;
+use crate::tables::head::Head;
+use crate::tables::loca::Loca;
+use crate::OpentypeTableAccess;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum QuadraticPath {
@@ -173,7 +173,7 @@ impl<'font> GlyphAccessor<'font> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use Font;
+    use crate::Font;
 
     #[test]
     fn test_single_glyph() {

@@ -14,7 +14,7 @@
 
 use super::SfntTable;
 
-use error::ParserError;
+use crate::error::ParserError;
 
 #[derive(Debug)]
 pub struct Hhea {
