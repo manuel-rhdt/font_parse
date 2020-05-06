@@ -51,9 +51,9 @@ impl<'data> Index<'data> {
     }
 }
 
-named_args!(parse_offset(offSize: u8)<&[u8], usize>,
+named_args!(parse_offset(off_size: u8)<&[u8], usize>,
     switch!(
-        value!(offSize), //< offset size
+        value!(off_size), //< offset size
         1 => map!(be_u8, |x| x as usize) |
         2 => map!(be_u16, |x| x as usize) |
         3 => map!(be_u24, |x| x as usize) |
@@ -66,8 +66,8 @@ named_args!(parse_offset_list(num_offsets: usize)<&[u8], Vec<usize>>,
         cond!(
             num_offsets > 0,
             do_parse!(
-                offSize: be_u8 >>
-                offsets: count!(apply!(parse_offset, offSize), num_offsets + 1) >>
+                off_size: be_u8 >>
+                offsets: count!(apply!(parse_offset, off_size), num_offsets + 1) >>
                 (offsets)
             )
         ),

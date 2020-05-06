@@ -327,6 +327,7 @@ impl<'a> CffCharstringParser<'a> {
             self.repeat_c = 0;
             self.next_byte()?
         };
+        #[allow(overlapping_patterns)]
         match self.current_op {
             // hstem | vstem
             1 | 3 => {
@@ -584,7 +585,6 @@ impl<'a> CffCharstringParser<'a> {
                 self.stack.clear();
                 None
             }
-            _ => unreachable!(),
         }
     }
 }
