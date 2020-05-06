@@ -1,11 +1,11 @@
 //    Copyright 2018 Manuel Reinhardt
-// 
+//
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
 //    You may obtain a copy of the License at
-// 
+//
 //        http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 //    Unless required by applicable law or agreed to in writing, software
 //    distributed under the License is distributed on an "AS IS" BASIS,
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -88,7 +88,7 @@ const LOOKUP_TABLE: [&'static [u8]; 16] = [
 // TODO: Maybe unnecessary heap allocations happen here...
 named!(parse_float<&[u8], f32>,
     map!(bits!(many_till!(
-        take_bits!(usize, 4), 
+        take_bits!(usize, 4),
         tag_bits!(u8, 4, 0xf)
     )),
         |(vec, _)| {
@@ -111,14 +111,14 @@ enum DictionaryParserState<'de> {
 }
 
 #[derive(Debug)]
-pub(crate) struct DictionaryDeserializer<'a, 'de: 'a> {
+pub(crate) struct DictionaryDeserializer<'de, 'font: 'de> {
     data: &'de [u8],
-    string_index: &'a cff::Index<'de>,
+    string_index: &'font cff::Index<'font>,
     state: DictionaryParserState<'de>,
 }
 
-impl<'a, 'de> DictionaryDeserializer<'a, 'de> {
-    pub(crate) fn new(data: &'de [u8], string_index: &'a cff::Index<'de>) -> Self {
+impl<'de, 'font: 'de> DictionaryDeserializer<'de, 'font> {
+    pub(crate) fn new(data: &'de [u8], string_index: &'font cff::Index) -> Self {
         DictionaryDeserializer {
             data,
             string_index,
@@ -126,7 +126,7 @@ impl<'a, 'de> DictionaryDeserializer<'a, 'de> {
         }
     }
 
-    pub(crate) fn get_cff_string(&self, index: usize) -> Cow<'de, str> {
+    pub(crate) fn get_cff_string(&self, index: usize) -> Cow<'font, str> {
         if index <= 390 {
             Cow::Borrowed(super::STANDARD_STRINGS[index])
         } else {

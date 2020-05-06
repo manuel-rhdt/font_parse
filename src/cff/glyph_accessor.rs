@@ -188,8 +188,8 @@ impl<'a> CffCharstringParser<'a> {
         glyph_id: u32,
         bytes: &'a [u8],
         stack: &'a mut VecDeque<Fixed16_16>,
-        global_subr: Option<&'a cff::Index<'a>>,
-        local_subr: Option<&'a cff::Index<'a>>,
+        global_subr: Option<&'a cff::Index>,
+        local_subr: Option<&'a cff::Index>,
         nominal_width_x: i32,
     ) -> Self {
         stack.clear();
@@ -241,7 +241,7 @@ impl<'a> CffCharstringParser<'a> {
         match result {
             Result::Err(Err::Incomplete(_)) => {
                 // we reached the end of input
-                warn!("Unexpected enf of input in cff charstring parser");
+                warn!("Unexpected end of input in cff charstring parser");
                 self.code = vec![];
                 None
             }
@@ -576,7 +576,7 @@ impl<'a> CffCharstringParser<'a> {
                 self.stack.push_back(Fixed16_16(val));
                 None
             }
-            x @ 0...31 => {
+            x @ 0..=31 => {
                 warn!(
                     "Unknown operator in cff charstring (glyph id={}): {}",
                     self.glyph_id, x

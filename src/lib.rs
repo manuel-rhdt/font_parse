@@ -30,8 +30,8 @@ use nom::{be_u16, be_u32, be_u8};
 
 use std::borrow::Cow;
 
-mod error;
 mod cff;
+mod error;
 mod glyph_accessor;
 pub mod tables;
 pub(crate) mod ttf_glyph_accessor;
@@ -74,11 +74,11 @@ impl Tag {
 }
 
 named!(parse_tag<&[u8],Tag>,
-        do_parse!(
-            array: count_fixed!(u8, be_u8, 4) >>
-            (Tag(array))
-        )
-    );
+    do_parse!(
+        array: count_fixed!(u8, be_u8, 4) >>
+        (Tag(array))
+    )
+);
 
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
@@ -124,7 +124,7 @@ pub enum OutlineType {
 ///
 /// This trait can be implemented by types that represent OpenType fonts and are
 /// capable of providing access to the raw SFNT tables present in a font.
-pub trait OpentypeTableAccess: Sized {
+pub trait OpentypeTableAccess {
     /// Returns a slice with the binary data of the font table whose tag is
     /// `tag`.
     ///
@@ -136,8 +136,9 @@ pub trait OpentypeTableAccess: Sized {
     /// the raw font table data.
     fn table_data(&self, tag: Tag) -> Option<&[u8]>;
 
-    /// Returns a `Vec` containing all table `Tag`s present in a font.
-    fn all_tables(&self) -> Vec<Tag>;
+    fn has_table(&self, tag: Tag) -> bool {
+        self.table_data(tag).is_some()
+    }
 
     /// Tries to parse a font table into the requested type.
     ///
@@ -161,12 +162,7 @@ pub trait OpentypeTableAccess: Sized {
     where
         Tbl: tables::SfntTable<'b, Context = ()>,
     {
-        let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
-        let table_data = self
-            .table_data(tag)
-            .ok_or_else(|| ParserError::expected_table(tag))?;
-        Tbl::from_data(table_data, ())
-            .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
+        self.parse_table_context(())
     }
 
     /// Tries to parse a font table into the requested type.
@@ -189,12 +185,11 @@ pub trait OpentypeTableAccess: Sized {
 
     // TODO: Needs Testing
     fn outline_type(&self) -> OutlineType {
-        let tables = self.all_tables();
-        if tables.contains(&Tag::new('S', 'V', 'G', ' ')) {
+        if self.has_table(Tag::new('S', 'V', 'G', ' ')) {
             OutlineType::Svg
-        } else if tables.contains(&Tag::new('C', 'F', 'F', ' ')) {
+        } else if self.has_table(Tag::new('C', 'F', 'F', ' ')) {
             OutlineType::Cff
-        } else if tables.contains(&Tag::new('C', 'F', 'F', '2')) {
+        } else if self.has_table(Tag::new('C', 'F', 'F', '2')) {
             OutlineType::Cff2
         } else {
             OutlineType::TrueType
@@ -202,7 +197,10 @@ pub trait OpentypeTableAccess: Sized {
     }
 
     /// Returns a `GlyphAccessor` providing access to individual glyphs of the font.
-    fn glyphs(&self) -> Result<GlyphAccessor<'_>, ParserError> {
+    fn glyphs(&self) -> Result<GlyphAccessor<'_>, ParserError>
+    where
+        Self: Sized,
+    {
         match CffGlyphAccessor::new(self) {
             Err(err) => match err.kind() {
                 ErrorKind::TableMissing(_) => {}
@@ -232,7 +230,6 @@ impl<'a> Font<'a> {
     /// Create a `Font` from a slice of bytes and an index for selecting a font
     /// from an OpenType font collection.
     pub fn from_bytes(bytes: &'a [u8], index: u32) -> Result<Self, ParserError> {
-        // TODO: remove .unwrap()
         let (_, font_header) = parse_slice(bytes)?;
         let mut collection = None;
         let record = match font_header {
@@ -266,10 +263,6 @@ impl<'a> OpentypeTableAccess for Font<'a> {
         record.map(move |record| {
             &self.data[record.offset as usize..record.offset as usize + record.length as usize]
         })
-    }
-
-    fn all_tables(&self) -> Vec<Tag> {
-        self.record.tables.iter().map(|table| table.tag).collect()
     }
 }
 
@@ -322,11 +315,11 @@ named!(table_record<&[u8],TableRecord>,
 
 named!(parse_font_collection<&[u8], FontCollection>,
     do_parse!(
-        tag!("ttcf") >> 
-        major_version: be_u16 >> 
-        minor_version: be_u16 >> 
-        fonts: length_count!(verify!(be_u32, |val| val <= 10000), parse_font) >> 
-        sig: cond!(major_version >= 2, tuple!(be_u32, be_u32, be_u32)) >> 
+        tag!("ttcf") >>
+        major_version: be_u16 >>
+        minor_version: be_u16 >>
+        fonts: length_count!(verify!(be_u32, |val| val <= 10000), parse_font) >>
+        sig: cond!(major_version >= 2, tuple!(be_u32, be_u32, be_u32)) >>
         (FontCollection {
             major_version,
             minor_version,

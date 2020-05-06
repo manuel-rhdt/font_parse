@@ -1,11 +1,11 @@
 //    Copyright 2018 Manuel Reinhardt
-// 
+//
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //    you may not use this file except in compliance with the License.
 //    You may obtain a copy of the License at
-// 
+//
 //        http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 //    Unless required by applicable law or agreed to in writing, software
 //    distributed under the License is distributed on an "AS IS" BASIS,
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,27 +14,33 @@
 
 use error::ParserError;
 
-use nom::{be_u8, be_u16, be_u24, be_u32};
+use nom::{be_u16, be_u24, be_u32, be_u8};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Index<'a> {
+pub struct Index<'data> {
+    /// The offsets into the data that index the elements
     pub offsets: Vec<usize>,
-    data: &'a [u8],
+    pub data: &'data [u8]
 }
 
-impl<'a> Index<'a> {
-    pub fn empty() -> Index<'static> {
+impl<'data> Index<'data> {
+    pub fn empty() -> Self {
         Index {
             offsets: vec![],
-            data: &[],
+            data: &[]
         }
     }
 
-    pub fn parse_from(bytes: &'a [u8]) -> Result<Self, ParserError> {
-        parse_index(bytes).map(|(_, index)| index).map_err(ParserError::from)
+    pub fn parse_from(data: &'data [u8]) -> Result<Self, ParserError> {
+        parse_index(data)
+            .map(|(_, index)| Index {
+                ..index
+            })
+            .map_err(ParserError::from)
     }
 
-    pub fn get(&self, index: usize) -> Option<&'a [u8]> {
+    pub fn get(&self, index: usize) -> Option<&'data [u8]> {
+        // cff uses 1-based indexing
         let start = self.offsets.get(index)?.saturating_sub(1);
         let end = self.offsets.get(index + 1)?.saturating_sub(1);
         self.data.get(start..end)
@@ -45,7 +51,7 @@ impl<'a> Index<'a> {
     }
 }
 
-named_args!(parse_offset(offSize: u8)<&[u8], usize>, 
+named_args!(parse_offset(offSize: u8)<&[u8], usize>,
     switch!(
         value!(offSize), //< offset size
         1 => map!(be_u8, |x| x as usize) |
@@ -117,5 +123,4 @@ mod test {
             parse_index(&data).unwrap().1
         );
     }
-
 }

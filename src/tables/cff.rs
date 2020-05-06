@@ -16,28 +16,28 @@ use nom::be_u8;
 use serde::Deserialize;
 
 use super::SfntTable;
-use error::ParserError;
 use cff;
 use cff::parse_index;
+use error::ParserError;
 
 #[derive(Debug, Clone)]
-pub struct Cff<'a> {
+pub struct Cff<'font> {
     pub header: Header,
-    pub name: &'a str,
-    pub top_dict_data: TopDictData<'a>,
+    pub name: String,
+    pub top_dict_data: TopDictData,
     pub(crate) private_dict_data: PrivateDictData,
-    pub(crate) char_strings: cff::Index<'a>,
-    pub(crate) global_subrs: cff::Index<'a>,
-    pub(crate) local_subrs: cff::Index<'a>,
+    pub(crate) char_strings: cff::Index<'font>,
+    pub(crate) global_subrs: cff::Index<'font>,
+    pub(crate) local_subrs: cff::Index<'font>,
 }
 
-impl<'a> Cff<'a> {
-    fn from_cffdata(cffdata: CffData<'a>, data: &'a [u8]) -> Result<Self, ParserError> {
+impl<'font> Cff<'font> {
+    fn from_cffdata(cffdata: CffData<'font>, data: &'font [u8]) -> Result<Self, ParserError> {
         let name = cffdata
             .name_index
             .get(0)
             .ok_or(ParserError::from_string("Expected name index.".to_string()))?;
-        let name = ::std::str::from_utf8(name).map_err(|err| ParserError::from_err(err))?;
+        let name = String::from_utf8_lossy(name).into_owned();
 
         let top_dict_index = cffdata.top_dict_index;
         let string_index = cffdata.string_index;
@@ -46,7 +46,8 @@ impl<'a> Cff<'a> {
             "Expected top dict index.".to_string(),
         ))?;
 
-        let mut dictionary_deserializer = cff::DictionaryDeserializer::new(top_dict_data, &string_index);
+        let mut dictionary_deserializer =
+            cff::DictionaryDeserializer::new(top_dict_data, &string_index);
 
         let top_dict_data = TopDictData::deserialize(&mut dictionary_deserializer)?;
 
@@ -108,12 +109,12 @@ impl<'a> SfntTable<'a> for Cff<'a> {
 }
 
 #[derive(Debug, Clone)]
-struct CffData<'a> {
+struct CffData<'data> {
     header: Header,
-    name_index: cff::Index<'a>,
-    top_dict_index: cff::Index<'a>,
-    string_index: cff::Index<'a>,
-    global_subr_index: cff::Index<'a>,
+    name_index: cff::Index<'data>,
+    top_dict_index: cff::Index<'data>,
+    string_index: cff::Index<'data>,
+    global_subr_index: cff::Index<'data>,
 }
 
 named!(parse_cff_table<&[u8], CffData>,
@@ -123,8 +124,8 @@ named!(parse_cff_table<&[u8], CffData>,
         top_dict_index: parse_index >>
         string_index: parse_index >>
         global_subr_index: parse_index >>
-        (CffData { 
-            header, 
+        (CffData {
+            header,
             name_index,
             top_dict_index,
             string_index,
@@ -157,17 +158,17 @@ named!(parse_header<&[u8], Header>,
     )
 );
 
-#[derive(Default, Deserialize, Debug, Clone, Copy)]
+#[derive(Default, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 #[serde(default)]
-pub struct TopDictData<'a> {
+pub struct TopDictData {
     #[serde(rename = "version")]
     pub version: u32,
-    pub notice: &'a str,
-    pub copyright: &'a str,
-    pub full_name: &'a str,
-    pub family_name: &'a str,
-    pub weight: &'a str,
+    pub notice: String,
+    pub copyright: String,
+    pub full_name: String,
+    pub family_name: String,
+    pub weight: String,
     char_strings: usize,
     // size and offset of private dict
     private: (usize, usize),
