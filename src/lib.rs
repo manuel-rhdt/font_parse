@@ -29,6 +29,7 @@ use nom::IResult;
 use nom::{be_u16, be_u32, be_u8};
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Write;
 
@@ -83,7 +84,7 @@ named!(parse_tag<&[u8],Tag>,
 );
 
 use std::fmt;
-use std::fmt::{Debug, Display, Formatter};
+use std::{ops::Deref, fmt::{Debug, Display, Formatter}};
 impl Debug for Tag {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let string = self.tag_to_string().to_owned();
@@ -236,6 +237,43 @@ impl<T: OpentypeTableAccess> ParseTable for T {
             .ok_or_else(|| ParserError::expected_table(tag))?;
         Tbl::from_data(table_data, context)
             .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
+    }
+}
+
+#[derive(Debug)]
+pub struct FontKitFont {
+    pub inner: font_kit::font::Font,
+    table_data: RefCell<BTreeMap<Tag, Box<[u8]>>>,
+}
+
+impl FontKitFont {
+    pub fn new(inner: font_kit::font::Font) -> Self {
+        FontKitFont {
+            inner,
+            table_data: Default::default()
+        }
+    }
+
+    // This method may be used safely because the returned reference will never be invalidated
+    // while self is valid (i.e. we will not drop any of the boxes in `table_data` using a shared
+    // reference to self).
+    //
+    // We have to ensure that there will never be deletions in table_data though!
+    unsafe fn get_data_unsafe(&self, tag: Tag) -> Option<&[u8]> {
+        let bla = self.table_data.try_borrow_unguarded().unwrap();
+        bla.get(&tag).map(|x| x.deref() as &[u8])
+    }
+}
+
+impl OpentypeTableAccess for FontKitFont {
+    fn table_data(&self, tag: Tag) -> Option<&[u8]> {
+        if let Some(_data) = self.table_data.borrow().get(&tag) {
+            unsafe { self.get_data_unsafe(tag) }
+        } else {
+            let data = self.inner.load_font_table(u32::from_be_bytes(tag.0))?;
+            self.table_data.borrow_mut().insert(tag, data);
+            unsafe { self.get_data_unsafe(tag) }
+        }
     }
 }
 

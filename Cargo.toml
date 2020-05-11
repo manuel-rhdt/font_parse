@@ -11,6 +11,7 @@ serde_derive = "^1"
 serde = "^1"
 log = { version = "0.4", features = ["release_max_level_warn"] }
 derive_more = "^0.12"
+font-kit = "0.6.0"
 
 [dev_dependencies]
 simple_logger = "^1"
