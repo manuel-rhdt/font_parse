@@ -84,7 +84,10 @@ named!(parse_tag<&[u8],Tag>,
 );
 
 use std::fmt;
-use std::{ops::Deref, fmt::{Debug, Display, Formatter}};
+use std::{
+    fmt::{Debug, Display, Formatter},
+    ops::Deref,
+};
 impl Debug for Tag {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let string = self.tag_to_string().to_owned();
@@ -241,16 +244,16 @@ impl<T: OpentypeTableAccess> ParseTable for T {
 }
 
 #[derive(Debug)]
-pub struct FontKitFont {
-    pub inner: font_kit::font::Font,
+pub struct FontKitFont<'a> {
+    pub inner: &'a font_kit::font::Font,
     table_data: RefCell<BTreeMap<Tag, Box<[u8]>>>,
 }
 
-impl FontKitFont {
-    pub fn new(inner: font_kit::font::Font) -> Self {
+impl<'a> FontKitFont<'a> {
+    pub fn new(inner: &'a font_kit::font::Font) -> Self {
         FontKitFont {
             inner,
-            table_data: Default::default()
+            table_data: Default::default(),
         }
     }
 
@@ -265,7 +268,7 @@ impl FontKitFont {
     }
 }
 
-impl OpentypeTableAccess for FontKitFont {
+impl<'a> OpentypeTableAccess for FontKitFont<'a> {
     fn table_data(&self, tag: Tag) -> Option<&[u8]> {
         if let Some(_data) = self.table_data.borrow().get(&tag) {
             unsafe { self.get_data_unsafe(tag) }
@@ -288,11 +291,11 @@ fn int_log_base_2(mut val: u16) -> u16 {
     r
 }
 
-pub fn write_font<W: Write, Font: OpentypeTableAccess>(
-    font: &Font,
+pub fn write_font(
+    font: &dyn OpentypeTableAccess,
     version_tag: Tag,
     tables: &[Tag],
-    mut sink: W,
+    sink: &mut dyn Write,
 ) -> std::io::Result<()> {
     use std::convert::TryFrom;
     const PADDING: u32 = std::mem::size_of::<u32>() as u32;
