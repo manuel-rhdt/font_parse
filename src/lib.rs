@@ -29,6 +29,7 @@ use nom::IResult;
 use nom::{be_u16, be_u32, be_u8};
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::io::Write;
 
 mod cff;
@@ -110,7 +111,7 @@ pub struct FontRecord {
     pub search_range: u16,
     pub entry_selector: u16,
     pub range_shift: u16,
-    pub tables: Vec<TableRecord>,
+    pub tables: BTreeMap<Tag, TableRecord>,
 }
 
 impl FontRecord {
@@ -120,7 +121,7 @@ impl FontRecord {
         sink.write(&self.search_range.to_be_bytes())?;
         sink.write(&self.entry_selector.to_be_bytes())?;
         sink.write(&self.range_shift.to_be_bytes())?;
-        for table in &self.tables {
+        for (_tag, table) in &self.tables {
             table.write_to(&mut sink)?;
         }
         Ok(())
@@ -238,6 +239,109 @@ impl<T: OpentypeTableAccess> ParseTable for T {
     }
 }
 
+fn int_log_base_2(mut val: u16) -> u16 {
+    let mut r = 0;
+    while {
+        val >>= 1;
+        val > 0
+    } {
+        r += 1
+    }
+    r
+}
+
+pub fn write_font<W: Write, Font: OpentypeTableAccess>(
+    font: &Font,
+    version_tag: Tag,
+    tables: &[Tag],
+    mut sink: W,
+) -> std::io::Result<()> {
+    use std::convert::TryFrom;
+    const PADDING: u32 = std::mem::size_of::<u32>() as u32;
+
+    let num_tables =
+        u16::try_from(tables.len()).expect("A font can't contain more than 2^16 - 1 tables");
+    // Log2(maximum power of 2 <= numTables)
+    let entry_selector = int_log_base_2(num_tables);
+    // (Maximum power of 2 <= numTables) x 16
+    let search_range = (1u16 << entry_selector) * 16;
+    let range_shift = num_tables * 16 - search_range;
+
+    let first_table_offset = 16 + num_tables * 16;
+
+    let mut offset = first_table_offset as u32;
+    let mut table_records = BTreeMap::new();
+
+    let mut head_data = vec![];
+
+    let mut font_checksum: u32 = 0;
+    for &tag in tables {
+        let record = if tag == Tag(*b"head") {
+            head_data = font
+                .table_data(tag)
+                .expect("did not find corresponding table")
+                .to_vec();
+            // set the checksum adjustment to zero
+            (&mut head_data[8..12]).swap_with_slice(&mut [0, 0, 0, 0]);
+            TableRecord {
+                tag,
+                offset,
+                length: head_data.len() as u32,
+                check_sum: compute_table_checksum(&head_data),
+            }
+        } else {
+            let table_data = font
+                .table_data(tag)
+                .expect("did not find corresponding table");
+            TableRecord {
+                tag,
+                offset,
+                length: table_data.len() as u32,
+                check_sum: compute_table_checksum(table_data),
+            }
+        };
+
+        font_checksum = font_checksum.wrapping_add(record.check_sum);
+        table_records.insert(tag, record);
+        // add offset, including padding
+        offset += record.length + (PADDING - record.length % PADDING) % PADDING;
+    }
+
+    let font_record = FontRecord {
+        version: u32::from_be_bytes(version_tag.0),
+        search_range,
+        entry_selector,
+        range_shift,
+        tables: table_records,
+    };
+    let mut font_record_bytes = Vec::with_capacity(first_table_offset as usize);
+    font_record.write_to(&mut font_record_bytes).unwrap();
+    font_checksum = font_checksum.wrapping_add(compute_table_checksum(&font_record_bytes));
+
+    let check_sum_adjustment =
+        u32::from_be_bytes([0xB1, 0xB0, 0xAF, 0xBa]).wrapping_sub(font_checksum);
+    (&mut head_data[8..12]).swap_with_slice(&mut check_sum_adjustment.to_be_bytes());
+
+    // finally write the font file
+    sink.write_all(&font_record_bytes)?;
+    // padding
+    sink.write_all(&[0; PADDING as usize])?;
+
+    for &tag in tables {
+        if tag == Tag(*b"head") {
+            sink.write_all(&head_data)?;
+        } else {
+            sink.write_all(font.table_data(tag).unwrap())?;
+        }
+        // write padding bytes after every table
+        let num_zero_bytes =
+            ((PADDING - font_record.tables[&tag].length % PADDING) % PADDING) as usize;
+        sink.write_all(&[0u8, 0, 0, 0, 0, 0, 0, 0][..num_zero_bytes])?;
+    }
+
+    Ok(())
+}
+
 /// A type which reads a font file from bytes and implements `OpentypeTableAccess`.
 ///
 /// It currently supports font files based on SFNT tables (TrueType and OpenType).
@@ -290,7 +394,7 @@ impl<'a> Font<'a> {
     pub fn write_to<W: Write>(&self, mut sink: W) -> std::io::Result<()> {
         let mut offset = 16 + self.record.tables.len() as u32 * 16;
         let mut record = self.record.clone();
-        for table in &mut record.tables {
+        for (_tag, table) in &mut record.tables {
             table.offset = offset;
             offset += table.length;
             // alignment
@@ -299,8 +403,8 @@ impl<'a> Font<'a> {
         record.write_to(&mut sink)?;
         // padding
         sink.write_all(&[0, 0, 0, 0])?;
- 
-        for table in &record.tables {
+
+        for table in record.tables.values() {
             sink.write_all(self.table_data(table.tag).unwrap())?;
             // write padding bytes after every table
             let num_zero_bytes = ((8 - table.length % 8) % 8) as usize;
@@ -313,16 +417,26 @@ impl<'a> Font<'a> {
 
 impl<'a> OpentypeTableAccess for Font<'a> {
     fn table_data(&self, tag: Tag) -> Option<&[u8]> {
-        let index = self
-            .record
-            .tables
-            .binary_search_by_key(&tag, |record| record.tag)
-            .ok();
-        let record: Option<TableRecord> = index.map(|index| self.record.tables[index]);
+        let record = self.record.tables.get(&tag);
         record.map(move |record| {
             &self.data[record.offset as usize..record.offset as usize + record.length as usize]
         })
     }
+}
+
+fn compute_table_checksum(mut table: &[u8]) -> u32 {
+    let mut sum: u32 = 0;
+    while table.len() >= 4 {
+        let (first, second) = table.split_at(4);
+        let first = [first[0], first[1], first[2], first[3]];
+        sum = sum.wrapping_add(u32::from_be_bytes(first));
+        table = second;
+    }
+    let mut final_bytes = [0; 4];
+    for (index, val) in table.into_iter().enumerate() {
+        final_bytes[index] = *val;
+    }
+    sum.wrapping_add(u32::from_be_bytes(final_bytes))
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -353,6 +467,10 @@ pub struct FontCollection {
     pub dsig_offset: u32,
 }
 
+fn to_btree_map(vec: Vec<TableRecord>) -> BTreeMap<Tag, TableRecord> {
+    vec.into_iter().map(|record| (record.tag, record)).collect()
+}
+
 named!(parse_font<&[u8],FontRecord>,
     do_parse!(
         version: be_u32 >>
@@ -361,7 +479,7 @@ named!(parse_font<&[u8],FontRecord>,
         entry_selector: be_u16 >>
         range_shift: be_u16 >>
         // tables must be sorted for binary search
-        tables: map!(count!(table_record, num_tables as usize), |mut tables| {tables.sort_unstable(); tables}) >>
+        tables: map!(count!(table_record, num_tables as usize), to_btree_map) >>
         (FontRecord {
             version,
             search_range,
@@ -475,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn write_font() {
+    fn test_write_font() {
         let data = include_bytes!("../tests/font_files/Inconsolata-Regular.ttf");
         let font = Font::from_bytes(data, 0).expect("Could not read font.");
 
@@ -492,5 +610,54 @@ mod tests {
             font.table_data(Tag::new('g', 'l', 'y', 'f')),
             font2.table_data(Tag::new('g', 'l', 'y', 'f'))
         );
+    }
+
+    #[test]
+    fn test_write_font2() {
+        let data = include_bytes!("../tests/font_files/Inconsolata-Regular.ttf");
+        let font = Font::from_bytes(data, 0).expect("Could not read font.");
+
+        let mut data2 = vec![];
+        write_font(
+            &font,
+            Tag([0, 1, 0, 0]),
+            &[Tag(*b"GDEF"), Tag(*b"glyf"), Tag(*b"head")],
+            &mut data2,
+        )
+        .unwrap();
+
+        assert!(data2.len() < data.len());
+
+        let font2 = Font::from_bytes(&data2, 0).unwrap();
+
+        assert_eq!(
+            font.table_data(Tag::new('G', 'D', 'E', 'F')),
+            font2.table_data(Tag::new('G', 'D', 'E', 'F'))
+        );
+        assert_eq!(
+            font.table_data(Tag::new('g', 'l', 'y', 'f')),
+            font2.table_data(Tag::new('g', 'l', 'y', 'f'))
+        );
+        assert!(font2.table_data(Tag(*b"hhea")).is_none())
+    }
+
+    #[test]
+    fn checksum() {
+        let data = include_bytes!("../tests/font_files/Inconsolata-Regular.ttf");
+        let font = Font::from_bytes(data, 0).expect("Could not read font.");
+
+        for (&tag, &record) in &font.record.tables {
+            if &tag.0 == b"head" {
+                // for head the checksum is computed differently
+                continue;
+            }
+            let table_data = font.table_data(tag).unwrap();
+            assert_eq!(
+                compute_table_checksum(table_data),
+                record.check_sum,
+                "Checksum mismatch for {}",
+                tag
+            );
+        }
     }
 }
