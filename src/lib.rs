@@ -270,8 +270,8 @@ impl<'a> FontKitFont<'a> {
 
 impl<'a> OpentypeTableAccess for FontKitFont<'a> {
     fn table_data(&self, tag: Tag) -> Option<&[u8]> {
-        if let Some(_data) = self.table_data.borrow().get(&tag) {
-            unsafe { self.get_data_unsafe(tag) }
+        if let Some(data) = unsafe { self.get_data_unsafe(tag) } {
+            Some(data)
         } else {
             let data = self.inner.load_font_table(u32::from_be_bytes(tag.0))?;
             self.table_data.borrow_mut().insert(tag, data);
