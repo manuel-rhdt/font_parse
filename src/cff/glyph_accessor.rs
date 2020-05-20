@@ -102,18 +102,21 @@ impl<'font> Glyph<'font> {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlyphAccessor<'font> {
-    cff: CffTable<'font>,
+pub struct GlyphAccessor<'table_data> {
+    cff: CffTable<'table_data>,
     parser_stack: VecDeque<Fixed16_16>,
 }
 
-impl<'font> GlyphAccessor<'font> {
-    pub fn new(font: &'font impl OpentypeTableAccess) -> Result<Self, ParserError> {
-        let cff = font.parse_table()?;
-        Ok(GlyphAccessor {
-            cff,
-            parser_stack: Default::default(),
-        })
+impl<'table_data> GlyphAccessor<'table_data> {
+    pub fn new(
+        font: &impl OpentypeTableAccess<'table_data>,
+    ) -> Result<Self, ParserError> {
+        todo!();
+        // let cff = font.parse_table()?;
+        // Ok(GlyphAccessor {
+        //     cff,
+        //     parser_stack: Default::default(),
+        // })
     }
 
     pub fn num_glyphs(&self) -> u32 {

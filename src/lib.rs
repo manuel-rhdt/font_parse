@@ -32,6 +32,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Write;
+use std::sync::Arc;
 
 mod cff;
 mod error;
@@ -144,7 +145,9 @@ pub enum OutlineType {
 ///
 /// This trait can be implemented by types that represent OpenType fonts and are
 /// capable of providing access to the raw SFNT tables present in a font.
-pub trait OpentypeTableAccess {
+pub trait OpentypeTableAccess<'table_data> {
+    type TableData: 'table_data + Deref<Target = [u8]>;
+
     /// Returns a slice with the binary data of the font table whose tag is
     /// `tag`.
     ///
@@ -154,7 +157,7 @@ pub trait OpentypeTableAccess {
     /// The data returned from this function can not be expected to be sanitized
     /// at all. You must be very careful to not assume any well-formedness of
     /// the raw font table data.
-    fn table_data(&self, tag: Tag) -> Option<&[u8]>;
+    fn table_data(&self, tag: Tag) -> Option<Self::TableData>;
 
     fn has_table(&self, tag: Tag) -> bool {
         self.table_data(tag).is_some()
@@ -173,7 +176,7 @@ pub trait OpentypeTableAccess {
     }
 
     /// Returns a `GlyphAccessor` providing access to individual glyphs of the font.
-    fn glyphs(&self) -> Result<GlyphAccessor<'_>, ParserError>
+    fn glyphs(&self) -> Result<GlyphAccessor<'table_data>, ParserError>
     where
         Self: Sized,
     {
@@ -192,7 +195,7 @@ pub trait OpentypeTableAccess {
     }
 }
 
-pub trait ParseTable {
+pub trait ParseTable<'table_data> {
     /// Tries to parse a font table into the requested type.
     ///
     /// Examples
@@ -211,9 +214,9 @@ pub trait ParseTable {
     /// ------
     /// The default implementation only panics if the implementation of `Tbl`
     /// contains an invalid Tag.
-    fn parse_table<'b, Tbl>(&'b self) -> Result<Tbl, error::ParserError>
+    fn parse_table<Tbl>(&self) -> Result<Tbl, error::ParserError>
     where
-        Tbl: tables::SfntTable<'b, Context = ()>,
+        Tbl: for<'a> tables::SfntTable<'a, Context = ()>,
     {
         self.parse_table_context(())
     }
@@ -224,21 +227,21 @@ pub trait ParseTable {
     /// ------
     /// The default implementation only panics if the implementation of `Tbl`
     /// contains an invalid Tag.
-    fn parse_table_context<'b, Tbl, C>(&'b self, context: C) -> Result<Tbl, error::ParserError>
+    fn parse_table_context<Tbl, C>(&self, context: C) -> Result<Tbl, error::ParserError>
     where
-        Tbl: tables::SfntTable<'b, Context = C>;
+        Tbl: for<'a> tables::SfntTable<'a, Context = C>;
 }
 
-impl<T: OpentypeTableAccess> ParseTable for T {
-    fn parse_table_context<'b, Tbl, C>(&'b self, context: C) -> Result<Tbl, error::ParserError>
+impl<'table_data, T: OpentypeTableAccess<'table_data>> ParseTable<'table_data> for T {
+    fn parse_table_context<Tbl, C>(&self, context: C) -> Result<Tbl, error::ParserError>
     where
-        Tbl: tables::SfntTable<'b, Context = C>,
+        Tbl: for<'a> tables::SfntTable<'a, Context = C>,
     {
         let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
         let table_data = self
             .table_data(tag)
             .ok_or_else(|| ParserError::expected_table(tag))?;
-        Tbl::from_data(table_data, context)
+        Tbl::from_data(&*table_data, context)
             .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
     }
 }
@@ -246,37 +249,13 @@ impl<T: OpentypeTableAccess> ParseTable for T {
 #[derive(Debug)]
 pub struct FontKitFont<'a> {
     pub inner: &'a font_kit::font::Font,
-    table_data: RefCell<BTreeMap<Tag, Box<[u8]>>>,
 }
 
-impl<'a> FontKitFont<'a> {
-    pub fn new(inner: &'a font_kit::font::Font) -> Self {
-        FontKitFont {
-            inner,
-            table_data: Default::default(),
-        }
-    }
+impl<'a> OpentypeTableAccess<'static> for FontKitFont<'a> {
+    type TableData = Box<[u8]>;
 
-    // This method may be used safely because the returned reference will never be invalidated
-    // while self is valid (i.e. we will not drop any of the boxes in `table_data` using a shared
-    // reference to self).
-    //
-    // We have to ensure that there will never be deletions in table_data though!
-    unsafe fn get_data_unsafe(&self, tag: Tag) -> Option<&[u8]> {
-        let bla = self.table_data.try_borrow_unguarded().unwrap();
-        bla.get(&tag).map(|x| x.deref() as &[u8])
-    }
-}
-
-impl<'a> OpentypeTableAccess for FontKitFont<'a> {
-    fn table_data(&self, tag: Tag) -> Option<&[u8]> {
-        if let Some(data) = unsafe { self.get_data_unsafe(tag) } {
-            Some(data)
-        } else {
-            let data = self.inner.load_font_table(u32::from_be_bytes(tag.0))?;
-            self.table_data.borrow_mut().insert(tag, data);
-            unsafe { self.get_data_unsafe(tag) }
-        }
+    fn table_data(&self, tag: Tag) -> Option<Self::TableData> {
+        self.inner.load_font_table(u32::from_be_bytes(tag.0))
     }
 }
 
@@ -291,8 +270,9 @@ fn int_log_base_2(mut val: u16) -> u16 {
     r
 }
 
-pub fn write_font(
-    font: &dyn OpentypeTableAccess,
+
+pub fn write_font<'a>(
+    font: &impl OpentypeTableAccess<'a>,
     version_tag: Tag,
     tables: &[Tag],
     sink: &mut dyn Write,
@@ -338,7 +318,7 @@ pub fn write_font(
                 tag,
                 offset,
                 length: table_data.len() as u32,
-                check_sum: compute_table_checksum(table_data),
+                check_sum: compute_table_checksum(&*table_data),
             }
         };
 
@@ -372,7 +352,7 @@ pub fn write_font(
         if tag == Tag(*b"head") {
             sink.write_all(&head_data)?;
         } else {
-            sink.write_all(font.table_data(tag).unwrap())?;
+            sink.write_all(&*font.table_data(tag).unwrap())?;
         }
         // write padding bytes after every table
         let num_zero_bytes =
@@ -390,7 +370,7 @@ pub fn write_font(
 pub struct Font<'a> {
     record: FontRecord,
     collection: Option<FontCollection>,
-    data: Cow<'a, [u8]>,
+    data: &'a [u8],
 }
 
 impl<'a> Font<'a> {
@@ -414,7 +394,7 @@ impl<'a> Font<'a> {
         Ok(Font {
             record,
             collection,
-            data: Cow::Borrowed(bytes),
+            data: bytes,
         })
     }
 
@@ -456,11 +436,14 @@ impl<'a> Font<'a> {
     }
 }
 
-impl<'a> OpentypeTableAccess for Font<'a> {
-    fn table_data(&self, tag: Tag) -> Option<&[u8]> {
+impl<'a> OpentypeTableAccess<'a> for Font<'a> {
+    type TableData = &'a [u8];
+
+    fn table_data(&self, tag: Tag) -> Option<&'a [u8]> {
         let record = self.record.tables.get(&tag);
-        record.map(move |record| {
-            &self.data[record.offset as usize..record.offset as usize + record.length as usize]
+        record.and_then(move |record| {
+            self.data
+                .get(record.offset as usize..record.offset as usize + record.length as usize)
         })
     }
 }

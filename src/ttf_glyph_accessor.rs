@@ -125,7 +125,7 @@ impl<'a> Iterator for ContourIterator<'a> {
     }
 }
 
-named!(parse_glyph<&[u8], Glyph>, 
+named!(parse_glyph<&[u8], Glyph>,
     switch!(
         map!(peek!(parse_header), |header| header.number_of_contours < 0),
         true => map!(parse_composite_glyph, Glyph::Composite) |
@@ -140,11 +140,12 @@ pub struct GlyphAccessor<'font> {
 }
 
 impl<'font> GlyphAccessor<'font> {
-    pub fn new(font: &'font impl OpentypeTableAccess) -> Result<Self, ParserError> {
-        let head: Head = font.parse_table()?;
-        let loca = font.parse_table_context(head.index_to_loc_format)?;
-        let glyf = font.parse_table()?;
-        Ok(GlyphAccessor { loca, glyf })
+    pub fn new(font: &impl OpentypeTableAccess<'font>) -> Result<Self, ParserError> {
+        todo!()
+        // let head: Head = font.parse_table()?;
+        // let loca = font.parse_table_context(head.index_to_loc_format)?;
+        // let glyf = font.parse_table()?;
+        // Ok(GlyphAccessor { loca, glyf })
     }
 
     pub fn num_glyphs(&self) -> u32 {
