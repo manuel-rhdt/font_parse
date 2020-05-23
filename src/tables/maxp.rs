@@ -25,7 +25,7 @@ pub struct Maxp<'a> {
 }
 
 impl<'a> SfntTable<'a> for Maxp<'a> {
-    const TAG: &'static str = "maxp";
+    const TAG: &'static [u8; 4] = b"maxp";
     type Context = ();
     type Err = ParserError;
 

@@ -23,7 +23,7 @@ pub struct Hhea {
 }
 
 impl<'a> SfntTable<'a> for &'a Hhea {
-    const TAG: &'static str = "hhea";
+    const TAG: &'static [u8; 4] = b"hhea";
     type Context = ();
     type Err = ParserError;
 

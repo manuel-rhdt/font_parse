@@ -63,7 +63,7 @@ pub enum LocFormat {
 pub struct Loca(Vec<u32>);
 
 impl<'a> SfntTable<'a> for Loca {
-    const TAG: &'static str = "loca";
+    const TAG: &'static [u8; 4] = b"loca";
     type Context = LocFormat;
     type Err = ParserError;
 

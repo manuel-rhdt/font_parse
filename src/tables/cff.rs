@@ -97,7 +97,7 @@ impl<'font> Cff<'font> {
 }
 
 impl<'a> SfntTable<'a> for Cff<'a> {
-    const TAG: &'static str = "CFF ";
+    const TAG: &'static [u8; 4] = b"CFF ";
     type Context = ();
     type Err = ParserError;
 

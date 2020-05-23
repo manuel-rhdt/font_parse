@@ -20,7 +20,7 @@ pub mod loca;
 pub mod maxp;
 
 pub trait SfntTable<'a>: Sized {
-    const TAG: &'static str;
+    const TAG: &'static [u8; 4];
 
     type Context;
     type Err: 'static + ::std::error::Error;

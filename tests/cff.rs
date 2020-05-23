@@ -32,8 +32,8 @@ fn test_cff_font() {
 #[test]
 fn test_parse_cff_table() {
     let font = get_cff_font();
-    let cff: cff::Cff = font.parse_table().unwrap();
-    assert_eq!("LinBiolinumO", cff.name);
+    let cff = font.parse_table::<cff::Cff>().unwrap();
+    assert_eq!("LinBiolinumO", cff.get().unwrap().name);
 }
 
 #[test]

@@ -41,7 +41,7 @@ pub struct Head {
 }
 
 impl<'a> SfntTable<'a> for Head {
-    const TAG: &'static str = "head";
+    const TAG: &'static [u8; 4] = b"head";
     type Context = ();
     type Err = ParserError;
 

@@ -25,7 +25,7 @@ pub struct Glyf<'a> {
 }
 
 impl<'a> SfntTable<'a> for Glyf<'a> {
-    const TAG: &'static str = "glyf";
+    const TAG: &'static [u8; 4] = b"glyf";
     type Context = ();
     type Err = ParserError;
 

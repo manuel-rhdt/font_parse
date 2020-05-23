@@ -6,11 +6,10 @@ edition = "2018"
 
 [dependencies]
 nom = { version = "^4", features = ["verbose-errors"] }
-failure = "^0.1"
 serde_derive = "^1"
 serde = "^1"
-log = { version = "0.4" }
-derive_more = "^0.12"
+log = { version = "*" }
+derive_more = "*"
 font-kit = "*"
 
 [dev_dependencies]

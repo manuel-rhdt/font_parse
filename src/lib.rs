@@ -29,10 +29,8 @@ use nom::IResult;
 use nom::{be_u16, be_u32, be_u8};
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::sync::Arc;
 
 mod cff;
 mod error;
@@ -195,7 +193,29 @@ pub trait OpentypeTableAccess<'table_data> {
     }
 }
 
+#[derive(Debug)]
+pub struct TableData<Container, Table, Context> {
+    container: Container,
+    _marker: std::marker::PhantomData<Table>,
+    context: Context,
+}
+
+impl<Container, Table, Context: Clone> TableData<Container, Table, Context>
+where
+    Container: Deref<Target = [u8]>,
+{
+    pub fn get<'a>(&'a self) -> Result<Table, <Table as tables::SfntTable<'a>>::Err>
+    where
+        Table: tables::SfntTable<'a, Context = Context>,
+    {
+        let bytes = self.container.deref();
+        Table::from_data(bytes, self.context.clone())
+    }
+}
+
 pub trait ParseTable<'table_data> {
+    type Container;
+
     /// Tries to parse a font table into the requested type.
     ///
     /// Examples
@@ -214,9 +234,9 @@ pub trait ParseTable<'table_data> {
     /// ------
     /// The default implementation only panics if the implementation of `Tbl`
     /// contains an invalid Tag.
-    fn parse_table<Tbl>(&self) -> Result<Tbl, error::ParserError>
+    fn parse_table<Tbl>(&self) -> Result<TableData<Self::Container, Tbl, ()>, error::ParserError>
     where
-        Tbl: for<'a> tables::SfntTable<'a, Context = ()>,
+        Tbl: tables::SfntTable<'table_data, Context = ()>,
     {
         self.parse_table_context(())
     }
@@ -227,22 +247,34 @@ pub trait ParseTable<'table_data> {
     /// ------
     /// The default implementation only panics if the implementation of `Tbl`
     /// contains an invalid Tag.
-    fn parse_table_context<Tbl, C>(&self, context: C) -> Result<Tbl, error::ParserError>
+    fn parse_table_context<Tbl, C>(
+        &self,
+        context: C,
+    ) -> Result<TableData<Self::Container, Tbl, C>, error::ParserError>
     where
-        Tbl: for<'a> tables::SfntTable<'a, Context = C>;
+        Tbl: tables::SfntTable<'table_data, Context = C>;
 }
 
 impl<'table_data, T: OpentypeTableAccess<'table_data>> ParseTable<'table_data> for T {
-    fn parse_table_context<Tbl, C>(&self, context: C) -> Result<Tbl, error::ParserError>
+    type Container = T::TableData;
+
+    fn parse_table_context<Tbl, C>(
+        &self,
+        context: C,
+    ) -> Result<TableData<Self::Container, Tbl, C>, error::ParserError>
     where
-        Tbl: for<'a> tables::SfntTable<'a, Context = C>,
+        Tbl: tables::SfntTable<'table_data, Context = C>,
     {
-        let (_, tag) = parse_tag(Tbl::TAG.as_bytes()).expect("Invalid table tag.");
+        let tag = Tag(*Tbl::TAG);
         let table_data = self
             .table_data(tag)
             .ok_or_else(|| ParserError::expected_table(tag))?;
-        Tbl::from_data(&*table_data, context)
-            .map_err(|err| error::ParserError::from_table_parse_err(tag, err))
+
+        Ok(TableData {
+            container: table_data,
+            context,
+            _marker: std::marker::PhantomData,
+        })
     }
 }
 
@@ -269,7 +301,6 @@ fn int_log_base_2(mut val: u16) -> u16 {
     }
     r
 }
-
 
 pub fn write_font<'a>(
     font: &impl OpentypeTableAccess<'a>,
